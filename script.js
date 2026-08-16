@@ -222,19 +222,19 @@ function buildMessage(){
   const feeLine = fee ? `• Доставка: +${fee.toLocaleString("ru-RU")} ₸` : `• Доставка: бесплатно`;
 
   return [
-    "🧾 *Новый заказ — Food House*",
+    "   Новый заказ — Food House ",
     "",
-    `👤 Имя: ${name}`,
-    `📍 Адрес: ${addr}`,
-    gate ? `🔑 Домофон/этаж: ${gate}` : null,
-    `💳 Оплата: ${pay}`,
+    `  Имя: ${name}`,
+    `  Адрес: ${addr}`,
+    gate ? `  Домофон/этаж: ${gate}` : null,
+    `  Оплата: ${pay}`,
     "",
-    "*Заказ:*",
+    " Заказ: ",
     ...lines,
     "",
-    `💵 Сумма: ${sub.toLocaleString("ru-RU")} ₸`,
+    ` Сумма: ${sub.toLocaleString("ru-RU")} ₸`,
     feeLine,
-    `💰 *Итого: ${grand.toLocaleString("ru-RU")} ₸*`,
+    `  Итого: ${grand.toLocaleString("ru-RU")} ₸ `,
     note ? `\n📝 Комментарий: ${note}` : "",
   ].filter(Boolean).join("\n");
 }
