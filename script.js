@@ -235,13 +235,26 @@ function buildMessage(){
     ` Сумма: ${sub.toLocaleString("ru-RU")} ₸`,
     feeLine,
     `  Итого: ${grand.toLocaleString("ru-RU")} ₸ `,
-    note ? `\n📝 Комментарий: ${note}` : "",
+    note ? `\nКомментарий: ${note}` : "",
   ].filter(Boolean).join("\n");
 }
 
+/* Удаляет любые эмодзи (в т.ч. набранные вручную в комментарии) из текста заказа */
+function stripEmoji(text){
+  return text
+    // сами эмодзи (основной диапазон + доп. символы)
+    .replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}]/gu, "")
+    // модификаторы: variation selector, ZWJ, тон кожи, региональные буквы (флаги)
+    .replace(/[\u{FE0F}\u{FE0E}\u{200D}\u{1F3FB}-\u{1F3FF}\u{1F1E6}-\u{1F1FF}]/gu, "")
+    // подчищаем двойные пробелы, которые могли остаться на месте эмодзи
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/ \n/g, "\n");
+}
+
 function sendToWhatsApp(){
-  const msg = buildMessage();
+  let msg = buildMessage();
   if(!msg) return;
+  msg = stripEmoji(msg);
   const url = `https://wa.me/${PHONE}?text=${encodeURIComponent(msg)}`;
   window.open(url, "_blank");
 }
