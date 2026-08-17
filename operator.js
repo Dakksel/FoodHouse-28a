@@ -75,10 +75,27 @@ function showPanel(){
   $("#panelBox").style.display = "block";
 }
 
-auth.onAuthStateChanged(user=>{
-  if(user){
+async function checkRoleAndInit(user){
+  try{
+    const roleSnap = await db.collection("roles").doc(user.uid).get();
+    const role = roleSnap.exists ? roleSnap.data().role : null;
+    if(role !== "operator" && role !== "admin"){
+      $("#loginError").textContent = "У этого аккаунта нет доступа к панели оператора.";
+      await auth.signOut();
+      return;
+    }
     showPanel();
     initPanel();
+  }catch(e){
+    console.error(e);
+    $("#loginError").textContent = "Ошибка проверки доступа.";
+    await auth.signOut();
+  }
+}
+
+auth.onAuthStateChanged(user=>{
+  if(user){
+    checkRoleAndInit(user);
   } else {
     if(unsubscribeStatus){ unsubscribeStatus(); unsubscribeStatus = null; }
     showLogin();

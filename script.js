@@ -156,6 +156,27 @@ function subscribeAvailability(){
   );
 }
 
+/* ---------- 4c. ЦЕНЫ (синхронизация с панелью админа) ---------- */
+function applyPricing(overrides){
+  Object.entries(overrides || {}).forEach(([id, price])=>{
+    const it = ITEMS.find(x=>x.id===id);
+    if(it && typeof price === "number" && price > 0) it.price = price;
+  });
+  renderMenu();
+  updateCart();
+}
+
+function subscribePricing(){
+  if(typeof db === "undefined") return;
+  db.collection("pricing").doc("menu").onSnapshot(
+    snap=>{
+      const data = snap.exists ? snap.data() : {};
+      applyPricing(data.overrides || {});
+    },
+    err=>{ console.error("Ошибка синхронизации цен:", err); }
+  );
+}
+
 /* ---------- 5. DRAWER OPEN/CLOSE ---------- */
 function openDrawer(){ $("#drawer").classList.add("on"); $("#overlay").classList.add("on"); }
 function closeDrawer(){ $("#drawer").classList.remove("on"); $("#overlay").classList.remove("on"); }
@@ -224,6 +245,7 @@ function init(){
   renderMenu();
   updateCart();
   subscribeAvailability();
+  subscribePricing();
 
   /* click delegation for + / - */
   $("#menu").addEventListener("click", e=>{
