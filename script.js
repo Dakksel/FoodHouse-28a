@@ -22,25 +22,17 @@ const $$ = sel => document.querySelectorAll(sel);
 function renderChips(){
   const wrap = $("#cats");
   wrap.innerHTML = MENU.map((g,i)=>
-    `<button class="cat-chip ${i===0?'active':''}" data-i="${i}">${g.cat}</button>`
+    `<button class="cat-chip ${i===0?'active':''}" data-id="${g.id}">${g.name}</button>`
   ).join("");
-  wrap.addEventListener("click", e=>{
-    const b = e.target.closest(".cat-chip"); if(!b) return;
-    $$(".cat-chip").forEach(c=>c.classList.remove("active"));
-    b.classList.add("active");
-    const i = +b.dataset.i;
-    document.getElementById(`cat-${i}`)?.scrollIntoView({behavior:"smooth",block:"start"});
-  });
 }
 
 function renderMenu(){
   const wrap = $("#menu");
-  wrap.innerHTML = MENU.map((g,gi)=>`
-    <section class="cat-section" id="cat-${gi}" style="grid-column:1/-1">
-      <h2 style="color:var(--red);border-bottom:2px solid var(--red);padding-bottom:6px;margin:18px 0 4px;letter-spacing:1px;text-transform:uppercase">${g.cat}</h2>
+  wrap.innerHTML = MENU.map((g)=>`
+    <section class="cat-section" id="cat-${g.id}" style="grid-column:1/-1">
+      <h2 style="color:var(--red);border-bottom:2px solid var(--red);padding-bottom:6px;margin:18px 0 4px;letter-spacing:1px;text-transform:uppercase">${g.name}</h2>
     </section>
-    ${g.items.map((it,ii)=>{
-      const item = ITEMS.find(x=>x.id===`${gi}-${ii}`);
+    ${g.items.map((item)=>{
       const off = state.unavailable.has(item.id);
       return `
         <div class="card ${off?'out-of-stock':''}">
@@ -156,24 +148,18 @@ function subscribeAvailability(){
   );
 }
 
-/* ---------- 4c. ЦЕНЫ (синхронизация с панелью админа) ---------- */
-function applyPricing(overrides){
-  Object.entries(overrides || {}).forEach(([id, price])=>{
-    const it = ITEMS.find(x=>x.id===id);
-    if(it && typeof price === "number" && price > 0) it.price = price;
-  });
-  renderMenu();
-  updateCart();
-}
-
-function subscribePricing(){
+/* ---------- 4c. МЕНЮ (категории/позиции/цены — синхронизация с панелью администратора) ---------- */
+function subscribeMenu(){
   if(typeof db === "undefined") return;
-  db.collection("pricing").doc("menu").onSnapshot(
+  db.collection("menu").doc("structure").onSnapshot(
     snap=>{
-      const data = snap.exists ? snap.data() : {};
-      applyPricing(data.overrides || {});
+      if(!snap.exists) return; // ещё не инициализировано администратором — используем сид-данные
+      rebuildMenuFromFlat(snap.data());
+      renderChips();
+      renderMenu();
+      updateCart();
     },
-    err=>{ console.error("Ошибка синхронизации цен:", err); }
+    err=>{ console.error("Ошибка синхронизации меню:", err); }
   );
 }
 
@@ -245,7 +231,15 @@ function init(){
   renderMenu();
   updateCart();
   subscribeAvailability();
-  subscribePricing();
+  subscribeMenu();
+
+  /* переключение категорий (обработчик один раз — renderChips() только меняет разметку) */
+  $("#cats").addEventListener("click", e=>{
+    const b = e.target.closest(".cat-chip"); if(!b) return;
+    $$(".cat-chip").forEach(c=>c.classList.remove("active"));
+    b.classList.add("active");
+    document.getElementById(`cat-${b.dataset.id}`)?.scrollIntoView({behavior:"smooth",block:"start"});
+  });
 
   /* click delegation for + / - */
   $("#menu").addEventListener("click", e=>{

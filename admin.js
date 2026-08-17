@@ -1,5 +1,6 @@
 /* =====================================================
-   FOOD HOUSE — панель администратора (наличие + цены)
+   FOOD HOUSE — панель администратора
+   Наличие + полный редактор меню (категории, позиции, цены)
    Требует роль "admin" в коллекции roles/{uid}
    ===================================================== */
 
@@ -8,21 +9,26 @@ const $ = sel => document.querySelector(sel);
 const auth        = firebase.auth();
 const db          = firebase.firestore();
 const STATUS_DOC  = db.collection("status").doc("menu");
-const PRICING_DOC = db.collection("pricing").doc("menu");
+const MENU_DOC    = db.collection("menu").doc("structure");
 
 let currentUnavailable = new Set();
-let currentOverrides   = {};
+let menuFlat        = { categories: [], items: [] }; // текущее состояние из Firestore
+let menuDocExists   = false;
 let unsubStatus  = null;
-let unsubPricing = null;
+let unsubMenu    = null;
+
+function cloneFlat(flat){ return JSON.parse(JSON.stringify(flat)); }
+function escapeAttr(s){
+  return String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;");
+}
 
 /* ---------- РЕНДЕР: НАЛИЧИЕ ---------- */
 function renderAvailability(){
   const wrap = $("#availList");
-  wrap.innerHTML = MENU.map((g, gi) => `
+  wrap.innerHTML = MENU.map((g) => `
     <div class="admin-group">
-      <h3 class="admin-group-title">${g.cat}</h3>
-      ${g.items.map((it, ii) => {
-        const item = ITEMS.find(x => x.id === `${gi}-${ii}`);
+      <h3 class="admin-group-title">${g.name}</h3>
+      ${g.items.map((item) => {
         const off = currentUnavailable.has(item.id);
         return `
           <label class="admin-item ${off ? 'is-off' : ''}">
@@ -37,28 +43,60 @@ function renderAvailability(){
   `).join("");
 }
 
-/* ---------- РЕНДЕР: ЦЕНЫ ---------- */
-function renderPricing(){
-  const wrap = $("#priceList");
-  wrap.innerHTML = MENU.map((g, gi) => `
-    <div class="admin-group">
-      <h3 class="admin-group-title">${g.cat}</h3>
-      ${g.items.map((it, ii) => {
-        const item = ITEMS.find(x => x.id === `${gi}-${ii}`);
-        const current = currentOverrides[item.id] ?? item.price;
-        return `
-          <div class="admin-price-row">
-            <span class="admin-item-name">${item.name}</span>
-            <input type="number" class="admin-price-input" data-id="${item.id}" value="${current}" min="1" step="10">
-            <span class="admin-price-currency">₸</span>
-            <button class="admin-price-save" data-id="${item.id}">Сохранить</button>
-          </div>`;
-      }).join("")}
+/* ---------- РЕНДЕР: РЕДАКТОР МЕНЮ ---------- */
+function renderMenuEditor(){
+  const wrap = $("#menuEditor");
+
+  if(!menuDocExists){
+    wrap.innerHTML = `
+      <div class="admin-init-box">
+        <p>Меню в базе данных ещё не инициализировано. Нажмите кнопку ниже, чтобы загрузить туда текущее меню сайта — после этого его можно будет редактировать здесь.</p>
+        <button id="initMenuBtn" class="admin-btn">Инициализировать меню в базе</button>
+      </div>`;
+    $("#initMenuBtn").addEventListener("click", ()=> saveMenu(MENU_SEED));
+    return;
+  }
+
+  const cats  = menuFlat.categories;
+  const items = menuFlat.items;
+
+  wrap.innerHTML = cats.map(cat => `
+    <div class="admin-menu-cat" data-cat-id="${cat.id}">
+      <div class="admin-menu-cat-head">
+        <input type="text" class="admin-cat-name-input" data-cat-id="${cat.id}" value="${escapeAttr(cat.name)}">
+        <button class="admin-btn-small admin-save-cat" data-cat-id="${cat.id}">Сохранить</button>
+        <button class="admin-btn-small admin-del-cat" data-cat-id="${cat.id}">Удалить категорию</button>
+      </div>
+
+      ${items.filter(it=>it.catId===cat.id).map(item => `
+        <div class="admin-price-row" data-item-id="${item.id}">
+          <input type="text" class="admin-item-name-input" data-item-id="${item.id}" value="${escapeAttr(item.name)}">
+          <input type="number" class="admin-price-input" data-item-id="${item.id}" value="${item.price}" min="1" step="10">
+          <span class="admin-price-currency">₸</span>
+          <button class="admin-btn-small admin-save-item" data-item-id="${item.id}">Сохранить</button>
+          <button class="admin-btn-small admin-del-item" data-item-id="${item.id}">Удалить</button>
+        </div>
+      `).join("")}
+
+      <div class="admin-add-item-row">
+        <input type="text" class="admin-new-item-name" data-cat-id="${cat.id}" placeholder="Название новой позиции">
+        <input type="number" class="admin-new-item-price" data-cat-id="${cat.id}" placeholder="Цена" min="1" step="10">
+        <button class="admin-btn-small admin-add-item" data-cat-id="${cat.id}">+ Добавить позицию</button>
+      </div>
     </div>
-  `).join("");
+  `).join("") + `
+    <div class="admin-add-cat-row">
+      <input type="text" id="newCatName" placeholder="Название новой категории (например БУРГЕР)">
+      <select id="newCatColor">
+        <option value="yellow">Жёлтая</option>
+        <option value="red">Красная</option>
+      </select>
+      <button id="addCatBtn" class="admin-btn-small">+ Добавить категорию</button>
+    </div>
+  `;
 }
 
-/* ---------- СОХРАНЕНИЕ ---------- */
+/* ---------- СОХРАНЕНИЕ: НАЛИЧИЕ ---------- */
 async function toggleAvailability(id, available){
   const status = $("#saveStatus");
   status.textContent = "Сохранение…";
@@ -75,29 +113,83 @@ async function toggleAvailability(id, available){
   }
 }
 
-async function savePrice(id, rawValue){
+/* ---------- СОХРАНЕНИЕ: МЕНЮ ---------- */
+async function saveMenu(newFlat){
   const status = $("#saveStatus");
-  const price = Number(rawValue);
-  if(!price || price <= 0){
-    status.textContent = "Введите корректную цену (больше 0).";
-    return;
-  }
   status.textContent = "Сохранение…";
   try{
-    await PRICING_DOC.set({
-      overrides: { [id]: price }
-    }, { merge: true });
-    status.textContent = "Цена сохранена ✓ Обновится у всех клиентов мгновенно";
+    await MENU_DOC.set(newFlat);
+    status.textContent = "Сохранено ✓ Обновится у всех клиентов мгновенно";
   }catch(e){
     console.error(e);
-    status.textContent = "Ошибка сохранения цены.";
+    status.textContent = "Ошибка сохранения. Проверьте интернет.";
   }
+}
+
+async function saveCategoryName(catId, newName){
+  if(!newName.trim()) return;
+  const next = cloneFlat(menuFlat);
+  const cat = next.categories.find(c=>c.id===catId);
+  if(cat) cat.name = newName.trim();
+  await saveMenu(next);
+}
+
+async function deleteCategory(catId){
+  const hasItems = menuFlat.items.some(it=>it.catId===catId);
+  if(hasItems){
+    alert("Сначала удалите все позиции в этой категории (или перенесите их в другую).");
+    return;
+  }
+  if(!confirm("Удалить категорию?")) return;
+  const next = cloneFlat(menuFlat);
+  next.categories = next.categories.filter(c=>c.id!==catId);
+  await saveMenu(next);
+}
+
+async function saveItem(itemId, newName, newPrice){
+  const price = Number(newPrice);
+  if(!newName.trim() || !price || price<=0){
+    $("#saveStatus").textContent = "Проверьте название и цену (цена больше 0).";
+    return;
+  }
+  const next = cloneFlat(menuFlat);
+  const item = next.items.find(i=>i.id===itemId);
+  if(item){ item.name = newName.trim(); item.price = price; }
+  await saveMenu(next);
+}
+
+async function deleteItem(itemId){
+  if(!confirm("Удалить позицию из меню?")) return;
+  const next = cloneFlat(menuFlat);
+  next.items = next.items.filter(i=>i.id!==itemId);
+  await saveMenu(next);
+}
+
+async function addItem(catId, name, price){
+  const p = Number(price);
+  if(!name.trim() || !p || p<=0){
+    $("#saveStatus").textContent = "Введите название и цену новой позиции.";
+    return;
+  }
+  const next = cloneFlat(menuFlat);
+  next.items.push({ id: genId("it"), catId, name: name.trim(), price: p });
+  await saveMenu(next);
+}
+
+async function addCategory(name, color){
+  if(!name.trim()){
+    $("#saveStatus").textContent = "Введите название категории.";
+    return;
+  }
+  const next = cloneFlat(menuFlat);
+  next.categories.push({ id: genId("cat"), name: name.trim(), color });
+  await saveMenu(next);
 }
 
 /* ---------- ИНИЦИАЛИЗАЦИЯ ПАНЕЛИ ---------- */
 function initPanel(){
-  if(unsubStatus)  unsubStatus();
-  if(unsubPricing) unsubPricing();
+  if(unsubStatus) unsubStatus();
+  if(unsubMenu)   unsubMenu();
 
   unsubStatus = STATUS_DOC.onSnapshot(snap=>{
     const data = snap.exists ? snap.data() : {};
@@ -108,13 +200,15 @@ function initPanel(){
     $("#saveStatus").textContent = "Не удалось загрузить наличие.";
   });
 
-  unsubPricing = PRICING_DOC.onSnapshot(snap=>{
-    const data = snap.exists ? snap.data() : {};
-    currentOverrides = data.overrides || {};
-    renderPricing();
+  unsubMenu = MENU_DOC.onSnapshot(snap=>{
+    menuDocExists = snap.exists;
+    menuFlat = snap.exists ? snap.data() : { categories: [], items: [] };
+    if(snap.exists) rebuildMenuFromFlat(menuFlat); // чтобы вкладка "Наличие" тоже видела актуальные позиции
+    renderAvailability();
+    renderMenuEditor();
   }, err=>{
     console.error(err);
-    $("#saveStatus").textContent = "Не удалось загрузить цены.";
+    $("#saveStatus").textContent = "Не удалось загрузить меню.";
   });
 }
 
@@ -150,8 +244,8 @@ auth.onAuthStateChanged(user=>{
   if(user){
     checkRoleAndInit(user);
   } else {
-    if(unsubStatus){  unsubStatus();  unsubStatus  = null; }
-    if(unsubPricing){ unsubPricing(); unsubPricing = null; }
+    if(unsubStatus){ unsubStatus(); unsubStatus = null; }
+    if(unsubMenu){   unsubMenu();   unsubMenu   = null; }
     showLogin();
   }
 });
@@ -181,12 +275,44 @@ $("#availList").addEventListener("change", e=>{
   toggleAvailability(cb.dataset.id, cb.checked);
 });
 
-/* ---------- СОБЫТИЯ: ЦЕНЫ ---------- */
-$("#priceList").addEventListener("click", e=>{
-  const btn = e.target.closest(".admin-price-save");
-  if(!btn) return;
-  const input = document.querySelector(`.admin-price-input[data-id="${btn.dataset.id}"]`);
-  savePrice(btn.dataset.id, input.value);
+/* ---------- СОБЫТИЯ: РЕДАКТОР МЕНЮ ---------- */
+$("#menuEditor").addEventListener("click", e=>{
+  const saveCatBtn = e.target.closest(".admin-save-cat");
+  if(saveCatBtn){
+    const input = document.querySelector(`.admin-cat-name-input[data-cat-id="${saveCatBtn.dataset.catId}"]`);
+    saveCategoryName(saveCatBtn.dataset.catId, input.value);
+    return;
+  }
+
+  const delCatBtn = e.target.closest(".admin-del-cat");
+  if(delCatBtn){ deleteCategory(delCatBtn.dataset.catId); return; }
+
+  const saveItemBtn = e.target.closest(".admin-save-item");
+  if(saveItemBtn){
+    const id = saveItemBtn.dataset.itemId;
+    const nameInput  = document.querySelector(`.admin-item-name-input[data-item-id="${id}"]`);
+    const priceInput = document.querySelector(`.admin-price-input[data-item-id="${id}"]`);
+    saveItem(id, nameInput.value, priceInput.value);
+    return;
+  }
+
+  const delItemBtn = e.target.closest(".admin-del-item");
+  if(delItemBtn){ deleteItem(delItemBtn.dataset.itemId); return; }
+
+  const addItemBtn = e.target.closest(".admin-add-item");
+  if(addItemBtn){
+    const catId = addItemBtn.dataset.catId;
+    const nameInput  = document.querySelector(`.admin-new-item-name[data-cat-id="${catId}"]`);
+    const priceInput = document.querySelector(`.admin-new-item-price[data-cat-id="${catId}"]`);
+    addItem(catId, nameInput.value, priceInput.value);
+    return;
+  }
+
+  const addCatBtn = e.target.closest("#addCatBtn");
+  if(addCatBtn){
+    addCategory($("#newCatName").value, $("#newCatColor").value);
+    return;
+  }
 });
 
 /* ---------- ВКЛАДКИ ---------- */
@@ -195,6 +321,6 @@ document.querySelectorAll(".admin-tab").forEach(btn=>{
     document.querySelectorAll(".admin-tab").forEach(b=>b.classList.remove("is-active"));
     btn.classList.add("is-active");
     $("#availTab").style.display = btn.dataset.tab === "avail" ? "block" : "none";
-    $("#priceTab").style.display  = btn.dataset.tab === "price" ? "block" : "none";
+    $("#menuTab").style.display  = btn.dataset.tab === "menu"  ? "block" : "none";
   });
 });

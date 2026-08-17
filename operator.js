@@ -7,18 +7,19 @@ const $ = sel => document.querySelector(sel);
 const auth      = firebase.auth();
 const db        = firebase.firestore();
 const STATUS_DOC = db.collection("status").doc("menu");
+const MENU_DOC   = db.collection("menu").doc("structure");
 
 let currentUnavailable = new Set();
 let unsubscribeStatus = null;
+let unsubscribeMenu   = null;
 
 /* ---------- РЕНДЕР СПИСКА ---------- */
 function renderItemsList(){
   const wrap = $("#itemsList");
-  wrap.innerHTML = MENU.map((g, gi) => `
+  wrap.innerHTML = MENU.map((g) => `
     <div class="admin-group">
-      <h3 class="admin-group-title">${g.cat}</h3>
-      ${g.items.map((it, ii) => {
-        const item = ITEMS.find(x => x.id === `${gi}-${ii}`);
+      <h3 class="admin-group-title">${g.name}</h3>
+      ${g.items.map((item) => {
         const off = currentUnavailable.has(item.id);
         return `
           <label class="admin-item ${off ? 'is-off' : ''}">
@@ -54,6 +55,14 @@ async function toggleItem(id, available){
 /* ---------- ИНИЦИАЛИЗАЦИЯ ПАНЕЛИ ---------- */
 function initPanel(){
   if(unsubscribeStatus) unsubscribeStatus(); // не плодим подписки при повторном входе
+  if(unsubscribeMenu) unsubscribeMenu();
+
+  unsubscribeMenu = MENU_DOC.onSnapshot(snap=>{
+    if(snap.exists) rebuildMenuFromFlat(snap.data()); // иначе остаёмся на сид-данных
+    renderItemsList();
+  }, err=>{
+    console.error("Ошибка загрузки меню:", err);
+  });
 
   unsubscribeStatus = STATUS_DOC.onSnapshot(snap=>{
     const data = snap.exists ? snap.data() : {};
@@ -98,6 +107,7 @@ auth.onAuthStateChanged(user=>{
     checkRoleAndInit(user);
   } else {
     if(unsubscribeStatus){ unsubscribeStatus(); unsubscribeStatus = null; }
+    if(unsubscribeMenu){ unsubscribeMenu(); unsubscribeMenu = null; }
     showLogin();
   }
 });
