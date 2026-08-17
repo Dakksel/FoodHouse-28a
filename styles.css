@@ -209,6 +209,67 @@ h1{margin:0;font-size:1.6rem;letter-spacing:2px;color:var(--yellow);text-transfo
   max-width:1400px;margin:20px auto 0;
 }
 
+/* ===== НЕТ В НАЛИЧИИ ===== */
+.card.out-of-stock{opacity:.55;filter:grayscale(.5)}
+.out-badge{
+  display:inline-block;background:rgba(220,38,38,.18);color:var(--red);
+  padding:2px 8px;border-radius:8px;font-size:.72rem;font-weight:800;
+  margin:0 0 10px;align-self:flex-start;
+}
+.qty button:disabled{background:#333!important;cursor:not-allowed;opacity:.5}
+
+/* ===== ПАНЕЛЬ ОПЕРАТОРА ===== */
+.admin-body{display:flex;justify-content:center;padding:30px 16px}
+.admin-wrap{width:100%;max-width:560px}
+.admin-header{display:flex;align-items:center;gap:14px;margin-bottom:20px}
+.admin-logo{width:56px;height:56px;border-radius:50%;border:2px solid var(--yellow);object-fit:cover}
+.admin-header h1{margin:0;font-size:1.3rem;color:var(--yellow);letter-spacing:.5px}
+.admin-card{
+  background:var(--card);border:1px solid var(--border);
+  border-radius:14px;padding:20px;margin-bottom:16px;
+}
+.admin-card h2{margin:0 0 14px;color:#fff;font-size:1.1rem}
+.admin-card label{display:block;font-size:.85rem;color:var(--muted);margin-bottom:14px;font-weight:600}
+.admin-card input[type="email"],
+.admin-card input[type="password"]{
+  display:block;width:100%;margin-top:6px;padding:10px 12px;
+  background:#0c0c0c;color:var(--text);border:1px solid var(--border);
+  border-radius:8px;font-size:1rem;font-family:inherit;
+}
+.admin-btn{
+  width:100%;padding:12px;border:0;border-radius:8px;
+  background:var(--yellow);color:#000;font-weight:800;cursor:pointer;
+  font-size:1rem;transition:background .15s;
+}
+.admin-btn:hover{background:var(--yellow-dark)}
+.admin-btn-ghost{
+  background:transparent;border:1px solid var(--border);color:var(--muted);
+  padding:8px 14px;border-radius:8px;cursor:pointer;font-size:.85rem;
+}
+.admin-btn-ghost:hover{border-color:var(--red);color:var(--red)}
+.admin-error{color:var(--red);font-size:.85rem;margin:6px 0 0;min-height:1em}
+.admin-panel-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.admin-panel-head h2{margin:0}
+.admin-hint{color:var(--muted);font-size:.82rem;margin:0 0 16px}
+.admin-group{margin-bottom:18px}
+.admin-group-title{
+  color:var(--red);text-transform:uppercase;letter-spacing:1px;
+  font-size:.85rem;border-bottom:2px solid var(--red);padding-bottom:6px;margin:0 0 10px;
+}
+.admin-item{
+  display:flex;align-items:center;gap:10px;
+  padding:10px 0;border-bottom:1px solid var(--border);
+  cursor:pointer;
+}
+.admin-item.is-off{opacity:.6}
+.admin-item-name{flex:1;font-weight:600}
+.admin-item-price{color:var(--yellow);font-weight:700;white-space:nowrap}
+.admin-toggle{display:flex;align-items:center;gap:8px;min-width:130px;justify-content:flex-end}
+.admin-toggle input[type="checkbox"]{width:18px;height:18px;accent-color:var(--green)}
+.admin-toggle-label{font-size:.78rem;color:var(--muted);white-space:nowrap}
+.admin-item.is-off .admin-toggle-label{color:var(--red)}
+.admin-save-status{color:var(--muted);font-size:.8rem;min-height:1em;text-align:right;margin-top:8px}
+
 /* ===== RESPONSIVE ===== */
 @media (max-width:520px){
   h1{font-size:1.2rem}

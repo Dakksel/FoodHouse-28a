@@ -8,92 +8,11 @@ const PHONE = "77051367685"; // international format, no "+"
 const DELIVERY_THRESHOLD = 4000;  // ₸ — orders at or above this get free delivery
 const DELIVERY_FEE       = 700;   // ₸ — charged when subtotal is below threshold
 
-/* ---------- 1. MENU (extracted from photos/menu.jpg) ---------- */
-const MENU = [
-  /* ---- ДОНЕР ---- */
-  {cat:"ДОНЕР", color:"yellow", items:[
-    {name:"Донер тауық етінен", price:1690},
-    {name:"Донер сиыр етінен", price:1790},
-    {name:"Донер аралас", price:1790},
-  ]},
-
-  /* ---- ШАУРМА ---- */
-  {cat:"ШАУРМА", color:"yellow", items:[
-    {name:"Шаурма тауық етінен", price:1290},
-    {name:"Шаурма сиыр етінен", price:1390},
-    {name:"Шаурма аралас", price:1390},
-  ]},
-
-  /* ---- ТҮРІК ДОНЕРІ ---- */
-  {cat:"ТҮРІК ДОНЕРІ", color:"yellow", items:[
-    {name:"Түрік донері тауық етінен", price:1690},
-    {name:"Түрік донері сиыр етінен", price:1790},
-    {name:"Түрік донері аралас", price:1790},
-  ]},
-
-  /* ---- СНЕКЕТ ---- */
-  {cat:"СНЕКЕТ", color:"red", items:[
-    {name:"Фри картоп", price:890},
-    {name:"Наггетстер", price:990},
-    {name:"Картоп тілімдері", price:990},
-    {name:"Стрипстер", price:1790},
-  ]},
-
-  /* ---- ХОТ-ДОГ ---- */
-  {cat:"ХОТ-ДОГ", color:"red", items:[
-    {name:"Хот-дог классикалық", price:890},
-    {name:"Хот-дог Big", price:1090},
-  ]},
-
-  /* ---- STREET BOX ---- */
-  {cat:"STREET BOX", color:"red", items:[
-    {name:"Street Box", price:1990},
-  ]},
-
-  /* ---- БУРГЕР ---- */
-  {cat:"БУРГЕР", color:"red", items:[
-    {name:"Бургер классикалық", price:1690},
-    {name:"Бургер Цезарь", price:1890},
-    {name:"Бургер Италиялық", price:2390},
-    {name:"Бургер Мексикалық", price:2390},
-  ]},
-
-  /* ---- ПИЦЦА ---- */
-  {cat:"ПИЦЦА", color:"red", items:[
-    {name:"Маргарита", price:2190},
-    {name:"Пепперони", price:2490},
-    {name:"Саңырауқұлақ қосылған тауық еті", price:2690},
-    {name:"4 мезгіл", price:2790},
-    {name:"Тартылған ет қосылған", price:2690},
-    {name:"Тәтті", price:2590},
-  ]},
-
-  /* ---- ТВИСТЕР ---- */
-  {cat:"ТВИСТЕР", color:"red", items:[
-    {name:"Твистер", price:1690},
-  ]},
-
-  /* ---- ЧИКЕН ---- */
-  {cat:"ЧИКЕН", color:"yellow", items:[
-    {name:"Қанаттар 8 шт", price:2090},
-    {name:"Қанаттар 15 шт", price:3490},
-    {name:"Қанаттар 24 шт", price:5290},
-  ]},
-];
-
-/* flatten into one items list with stable IDs */
-const ITEMS = MENU.flatMap((group, gi) =>
-  group.items.map((it, ii) => ({
-    id:`${gi}-${ii}`,
-    cat:group.cat,
-    color:group.color || "red",
-    name:it.name,
-    price:it.price,
-  }))
-);
+/* ---------- 1. MENU ---------- */
+/* MENU и ITEMS теперь определены в menu-data.js (общий файл с панелью оператора) */
 
 /* ---------- 2. STATE ---------- */
-const state = {};   // subTotal, delivery, grand — populated by updateCart()
+const state = { unavailable: new Set() };   // subTotal, delivery, grand, unavailable — популируются ниже
 let cart = {};      // { id: qty }
 
 const $ = sel => document.querySelector(sel);
@@ -122,16 +41,17 @@ function renderMenu(){
     </section>
     ${g.items.map((it,ii)=>{
       const item = ITEMS.find(x=>x.id===`${gi}-${ii}`);
+      const off = state.unavailable.has(item.id);
       return `
-        <div class="card">
+        <div class="card ${off?'out-of-stock':''}">
           <div class="card-body">
             <h3>${item.name}</h3>
-            <p class="desc">&nbsp;</p>
+            ${off ? `<p class="out-badge">Нет в наличии</p>` : `<p class="desc">&nbsp;</p>`}
             <div class="price">${item.price.toLocaleString("ru-RU")} ₸</div>
             <div class="qty" data-id="${item.id}">
-              <button class="minus" aria-label="Убрать">−</button>
+              <button class="minus" ${off?'disabled':''} aria-label="Убрать">−</button>
               <span>0</span>
-              <button class="plus" aria-label="Добавить">+</button>
+              <button class="plus" ${off?'disabled':''} aria-label="Добавить">+</button>
             </div>
           </div>
         </div>`;
@@ -140,7 +60,10 @@ function renderMenu(){
 }
 
 /* ---------- 4. CART LOGIC ---------- */
-function add(id){ cart[id] = (cart[id]||0) + 1; updateCart(); }
+function add(id){
+  if(state.unavailable.has(id)) return; // товар временно недоступен
+  cart[id] = (cart[id]||0) + 1; updateCart();
+}
 function sub(id){ if(!cart[id]) return; cart[id]--; if(cart[id]<=0) delete cart[id]; updateCart(); }
 
 function updateCart(){
@@ -195,6 +118,42 @@ function updateCart(){
   state.subTotal = total;
   state.delivery = fee;
   state.grand    = grand;
+}
+
+/* ---------- 4b. НАЛИЧИЕ ТОВАРОВ (синхронизация с панелью оператора) ---------- */
+function applyAvailability(unavailableIds){
+  state.unavailable = new Set(unavailableIds);
+
+  /* если товар, который уже лежит в корзине, выключили — убираем и предупреждаем */
+  const removed = [];
+  Object.keys(cart).forEach(id=>{
+    if(state.unavailable.has(id)){
+      const it = ITEMS.find(x=>x.id===id);
+      if(it) removed.push(it.name);
+      delete cart[id];
+    }
+  });
+
+  renderMenu();
+  updateCart();
+
+  if(removed.length){
+    alert(`К сожалению, закончилось: ${removed.join(", ")}. Товар убран из корзины.`);
+  }
+}
+
+function subscribeAvailability(){
+  if(typeof db === "undefined"){
+    console.warn("Firebase не настроен — статус наличия работать не будет.");
+    return;
+  }
+  db.collection("status").doc("menu").onSnapshot(
+    snap=>{
+      const data = snap.exists ? snap.data() : {};
+      applyAvailability(data.unavailable || []);
+    },
+    err=>{ console.error("Ошибка синхронизации наличия:", err); }
+  );
 }
 
 /* ---------- 5. DRAWER OPEN/CLOSE ---------- */
@@ -264,6 +223,7 @@ function init(){
   renderChips();
   renderMenu();
   updateCart();
+  subscribeAvailability();
 
   /* click delegation for + / - */
   $("#menu").addEventListener("click", e=>{
